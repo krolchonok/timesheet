@@ -18,6 +18,25 @@ DAYS = ("mon", "tue", "wed", "thu", "fri")
 WEEKLY_HOURS_NORM = 40
 TASK_STATUSES = ("new", "editing", "transferred")
 DEFAULT_TASK_STATUS = "new"
+DEV_SECRET_KEY = "timesheet-dev-secret-change-me"
+
+
+def is_production() -> bool:
+    return os.environ.get("TIMESHEET_ENV", "development").lower() == "production"
+
+
+def seed_demo_enabled() -> bool:
+    default = "0" if is_production() else "1"
+    return os.environ.get("TIMESHEET_SEED_DEMO", default).strip() == "1"
+
+
+def configure_app() -> None:
+    if is_production():
+        if app.secret_key == DEV_SECRET_KEY or not app.secret_key:
+            raise RuntimeError("Set a strong SECRET_KEY when TIMESHEET_ENV=production")
+        app.config["SESSION_COOKIE_HTTPONLY"] = True
+        app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+        app.config["SESSION_COOKIE_SECURE"] = os.environ.get("SESSION_COOKIE_SECURE", "1") == "1"
 
 
 def week_start_for(day: date | None = None) -> str:
@@ -118,6 +137,9 @@ def seed_task_categories(db: sqlite3.Connection):
     db.commit()
 
 
+ADMIN_TASK_CATEGORY = "Административные задачи"
+
+
 def seed_project_templates(db: sqlite3.Connection):
     defaults = ["Проектные задачи"]
     for index, name in enumerate(defaults):
@@ -128,6 +150,30 @@ def seed_project_templates(db: sqlite3.Connection):
                 (name, index),
             )
     db.commit()
+    db.execute(
+        "UPDATE project_task_templates SET active = 0 WHERE name = ?",
+        (ADMIN_TASK_CATEGORY,),
+    )
+    db.execute(
+        """
+        UPDATE tasks SET is_project = 0, category = ?
+        WHERE is_project = 1 AND task = ?
+        """,
+        (ADMIN_TASK_CATEGORY, ADMIN_TASK_CATEGORY),
+    )
+    db.commit()
+
+
+def ensure_project_tasks_for_week(db: sqlite3.Connection, week_start: str, user_id: int, fio: str | None = None):
+    if fio:
+        names = [fio]
+    else:
+        names = [
+            row["name"]
+            for row in db.execute("SELECT name FROM people WHERE active = 1 ORDER BY name COLLATE NOCASE").fetchall()
+        ]
+    for name in names:
+        ensure_project_tasks(db, name, week_start, user_id)
 
 
 def ensure_project_tasks(db: sqlite3.Connection, fio: str, week_start: str, user_id: int):
@@ -212,6 +258,59 @@ def seed_people(db: sqlite3.Connection):
     db.commit()
 
 
+def rows_admin_hours(rows: list) -> float:
+    return sum(
+        sum(float(row[day] or 0) for day in DAYS)
+        for row in rows
+        if not row["is_project"] and str(row["category"] or "") == ADMIN_TASK_CATEGORY
+    )
+
+
+def rows_norm_hours(rows: list) -> float:
+    return rows_project_hours(rows) + rows_admin_hours(rows)
+
+
+def tasks_norm_hours(tasks: list[dict]) -> float:
+    total = 0.0
+    for task in tasks:
+        hours = float(task.get("total", 0) or 0)
+        if task.get("is_project"):
+            total += hours
+        elif str(task.get("category") or "") == ADMIN_TASK_CATEGORY:
+            total += hours
+    return total
+
+
+def project_hours_total(tasks: list[dict]) -> float:
+    return sum(float(task.get("total", 0) or 0) for task in tasks if task.get("is_project"))
+
+
+def admin_hours_total(tasks: list[dict]) -> float:
+    return sum(
+        float(task.get("total", 0) or 0)
+        for task in tasks
+        if not task.get("is_project") and str(task.get("category") or "") == ADMIN_TASK_CATEGORY
+    )
+
+
+def progress_with_breakdown(tasks: list[dict]) -> dict:
+    project_hours = project_hours_total(tasks)
+    admin_hours = admin_hours_total(tasks)
+    total_hours = project_hours + admin_hours
+    progress = hours_progress(total_hours)
+    progress["project_hours"] = project_hours
+    progress["admin_hours"] = admin_hours
+    return progress
+
+
+def rows_project_hours(rows: list) -> float:
+    return sum(
+        sum(float(row[day] or 0) for day in DAYS)
+        for row in rows
+        if row["is_project"]
+    )
+
+
 def task_has_content(row: sqlite3.Row) -> bool:
     if str(row["task"] or "").strip():
         return True
@@ -249,6 +348,7 @@ def close_db(_exc):
 
 
 def init_db():
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     db = get_db()
     db.executescript(
         """
@@ -291,18 +391,31 @@ def init_db():
     sync_orphan_task_fio(db)
 
     admin = db.execute("SELECT id FROM users WHERE username = ?", ("admin",)).fetchone()
-    if admin is None:
-        db.execute(
-            "INSERT INTO users (username, password_hash, role, default_fio) VALUES (?, ?, ?, ?)",
-            ("admin", generate_password_hash("admin"), "admin", "Администратор"),
-        )
-
-    user = db.execute("SELECT id FROM users WHERE username = ?", ("user",)).fetchone()
-    if user is None:
-        db.execute(
-            "INSERT INTO users (username, password_hash, role, default_fio) VALUES (?, ?, ?, ?)",
-            ("user", generate_password_hash("user"), "user", ""),
-        )
+    if seed_demo_enabled():
+        if admin is None:
+            db.execute(
+                "INSERT INTO users (username, password_hash, role, default_fio) VALUES (?, ?, ?, ?)",
+                ("admin", generate_password_hash("admin"), "admin", "Администратор"),
+            )
+        user = db.execute("SELECT id FROM users WHERE username = ?", ("user",)).fetchone()
+        if user is None:
+            db.execute(
+                "INSERT INTO users (username, password_hash, role, default_fio) VALUES (?, ?, ?, ?)",
+                ("user", generate_password_hash("user"), "user", ""),
+            )
+    elif admin is None:
+        admin_username = os.environ.get("ADMIN_USERNAME", "admin").strip() or "admin"
+        admin_password = os.environ.get("ADMIN_PASSWORD", "").strip()
+        if admin_password:
+            db.execute(
+                "INSERT INTO users (username, password_hash, role, default_fio) VALUES (?, ?, ?, ?)",
+                (
+                    admin_username,
+                    generate_password_hash(admin_password),
+                    "admin",
+                    "Администратор",
+                ),
+            )
 
     db.commit()
 
@@ -461,6 +574,8 @@ def api_list_tasks():
     fio = str(request.args.get("fio", "")).strip()
 
     if user["role"] == "admin":
+        db = get_db()
+        ensure_project_tasks_for_week(db, week, user["id"], fio or None)
         query = """
             SELECT tasks.*, users.username AS owner_username
             FROM tasks
@@ -471,9 +586,8 @@ def api_list_tasks():
         if fio:
             query += " AND tasks.fio = ?"
             params.append(fio)
-        query += " AND tasks.is_project = 0"
-        query += " ORDER BY tasks.task COLLATE NOCASE, tasks.updated_at DESC, tasks.id DESC"
-        rows = get_db().execute(query, params).fetchall()
+        query += " ORDER BY tasks.is_project DESC, tasks.task COLLATE NOCASE, tasks.updated_at DESC, tasks.id DESC"
+        rows = db.execute(query, params).fetchall()
     else:
         if not fio:
             return jsonify({"tasks": [], "progress": hours_progress(0)})
@@ -481,19 +595,19 @@ def api_list_tasks():
         if person is None:
             return jsonify({"tasks": [], "progress": hours_progress(0)})
         fio = person["name"]
+        ensure_project_tasks(get_db(), fio, week, user["id"])
         rows = get_db().execute(
             """
             SELECT tasks.*, users.username AS owner_username
             FROM tasks
             JOIN users ON users.id = tasks.user_id
-            WHERE tasks.week_start = ? AND tasks.fio = ? AND tasks.is_project = 0
-            ORDER BY tasks.task COLLATE NOCASE, tasks.updated_at DESC, tasks.id DESC
+            WHERE tasks.week_start = ? AND tasks.fio = ?
+            ORDER BY tasks.is_project DESC, tasks.task COLLATE NOCASE, tasks.updated_at DESC, tasks.id DESC
             """,
             (week, fio),
         ).fetchall()
     tasks = [task_row_to_dict(row) for row in rows]
-    total_hours = sum(task["total"] for task in tasks)
-    return jsonify({"tasks": tasks, "progress": hours_progress(total_hours)})
+    return jsonify({"tasks": tasks, "progress": progress_with_breakdown(tasks)})
 
 
 @app.get("/api/weeks")
@@ -591,12 +705,19 @@ def api_update_task(task_id: int):
 
     week_start = parsed["week_start"] if payload.get("week_start") else row["week_start"]
     fio = parsed["fio"] if payload.get("fio") else row["fio"]
-    final_task = parsed["final_task"] if is_admin else str(row["final_task"] or "")
-    status = parsed["status"] if is_admin else normalize_task_status(row["status"])
+    if "category" not in payload:
+        parsed["category"] = str(row["category"] or "")
+    if "task" not in payload:
+        parsed["task"] = str(row["task"] or "")
+    if "comment" not in payload:
+        parsed["comment"] = str(row["comment"] or "")
+    final_task = parsed["final_task"] if is_admin and "final_task" in payload else str(row["final_task"] or "")
+    status = parsed["status"] if is_admin and "status" in payload else normalize_task_status(row["status"])
 
     if row["is_project"]:
         parsed["task"] = row["task"]
         parsed["category"] = ""
+        parsed["comment"] = str(row["comment"] or "")
         final_task = ""
         status = DEFAULT_TASK_STATUS
     elif user["role"] != "admin":
@@ -781,7 +902,10 @@ def api_delete_person(person_id: int):
 @admin_required
 def api_completion():
     week = parse_week_start(request.args.get("week"))
-    people = get_db().execute(
+    db = get_db()
+    user = current_user()
+    ensure_project_tasks_for_week(db, week, user["id"])
+    people = db.execute(
         "SELECT id, name FROM people WHERE active = 1 ORDER BY name COLLATE NOCASE"
     ).fetchall()
 
@@ -789,15 +913,15 @@ def api_completion():
     filled_count = 0
     for person in people:
         tasks = get_db().execute(
-            "SELECT * FROM tasks WHERE week_start = ? AND fio = ? AND is_project = 0",
+            "SELECT * FROM tasks WHERE week_start = ? AND fio = ?",
             (week, person["name"]),
         ).fetchall()
-        meaningful = [task for task in tasks if task_has_content(task)]
-        total_hours = sum(
-            sum(float(task[day] or 0) for day in DAYS) for task in tasks
-        )
+        meaningful = [task for task in tasks if not task["is_project"] and task_has_content(task)]
+        project_hours = rows_project_hours(tasks)
+        admin_hours = rows_admin_hours(tasks)
+        total_hours = rows_norm_hours(tasks)
         progress = hours_progress(total_hours)
-        filled = progress["hours_complete"] or len(meaningful) > 0
+        filled = progress["hours_complete"]
         if filled:
             filled_count += 1
         editors = get_db().execute(
@@ -815,8 +939,10 @@ def api_completion():
                 "id": person["id"],
                 "name": person["name"],
                 "filled": filled,
-                "task_count": len(tasks),
+                "task_count": len(meaningful),
                 "filled_tasks": len(meaningful),
+                "project_hours": project_hours,
+                "admin_hours": admin_hours,
                 "total_hours": total_hours,
                 "hours_norm": progress["hours_norm"],
                 "hours_percent": progress["hours_percent"],
@@ -961,6 +1087,7 @@ def api_delete_category(category_id: int):
 
 
 with app.app_context():
+    configure_app()
     init_db()
 
 

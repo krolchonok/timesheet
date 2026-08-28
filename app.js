@@ -1,6 +1,8 @@
 const PERSON_STORAGE_KEY = 'timesheet-selected-person';
 
+const projectBody = document.getElementById('project-body');
 const tbody = document.getElementById('task-body');
+const projectRowTemplate = document.getElementById('project-row-template');
 const rowTemplate = document.getElementById('row-template');
 const emptyHint = document.getElementById('empty-hint');
 const tasksLayout = document.getElementById('tasks-layout');
@@ -9,6 +11,7 @@ const personHint = document.getElementById('person-hint');
 const grandTotalEl = document.getElementById('grand-total');
 const userBadge = document.getElementById('user-badge');
 const btnAdd = document.getElementById('btn-add');
+const btnAddAdmin = document.getElementById('btn-add-admin');
 const btnExport = document.getElementById('btn-export');
 const fillIndicator = document.getElementById('fill-indicator');
 const fillLabel = document.getElementById('fill-label');
@@ -51,11 +54,24 @@ function storePerson(name) {
   } catch (_) {}
 }
 
+function projectRows() {
+  return rows.filter(isProjectRow);
+}
+
+function customRows() {
+  return rows.filter((row) => !isProjectRow(row));
+}
+
+function projectHoursSum() {
+  return normHoursFromRows(rows);
+}
+
 function updatePersonUi() {
   const selected = getSelectedPerson();
   const hasPerson = Boolean(selected);
 
   btnAdd.disabled = !hasPerson;
+  btnAddAdmin.disabled = !hasPerson;
   btnExport.disabled = !hasPerson;
   tasksLayout.classList.toggle('hidden', !hasPerson);
   fillIndicator.classList.toggle('hidden', !hasPerson);
@@ -70,20 +86,22 @@ function updatePersonUi() {
   personHint.textContent = `Задачи для: ${selected}`;
 }
 
-function bindRowInputs(row, tr) {
+function bindRowInputs(row, tr, allowDelete) {
   tr.querySelector('.row-total').textContent = formatHours(rowTotal(row));
 
-  tr.querySelector('.btn-delete').addEventListener('click', async () => {
-    if (!confirm('Удалить задачу?')) return;
-    try {
-      await api(`/api/tasks/${row.id}`, { method: 'DELETE' });
-      rows = rows.filter((item) => item.id !== row.id);
-      render();
-      weekPicker?.refreshWeeksList();
-    } catch (error) {
-      alert(`Ошибка удаления: ${error.message}`);
-    }
-  });
+  if (allowDelete) {
+    tr.querySelector('.btn-delete').addEventListener('click', async () => {
+      if (!confirm('Удалить задачу?')) return;
+      try {
+        await api(`/api/tasks/${row.id}`, { method: 'DELETE' });
+        rows = rows.filter((item) => item.id !== row.id);
+        render();
+        weekPicker?.refreshWeeksList();
+      } catch (error) {
+        alert(`Ошибка удаления: ${error.message}`);
+      }
+    });
+  }
 
   tr.querySelectorAll('.cell-input').forEach((input) => {
     input.addEventListener('input', () => onCellChange(row.id, input, tr));
@@ -95,11 +113,32 @@ function bindRowInputs(row, tr) {
   });
 }
 
-function renderRow(row, index, tbodyEl) {
+function renderProjectRow(row, index, tbodyEl) {
+  const tr = projectRowTemplate.content.cloneNode(true).querySelector('tr');
+  tr.dataset.id = row.id;
+  tr.querySelector('.row-num').textContent = index + 1;
+  tr.querySelector('.project-task-name').textContent = row.task;
+
+  tr.querySelectorAll('.cell-input').forEach((input) => {
+    const field = input.dataset.field;
+    if (DAYS.includes(field)) {
+      input.value = formatHours(parseHours(row[field]));
+    }
+  });
+
+  bindRowInputs(row, tr, false);
+  tbodyEl.appendChild(tr);
+}
+
+function renderCustomRow(row, index, tbodyEl) {
   const tr = rowTemplate.content.cloneNode(true).querySelector('tr');
   tr.dataset.id = row.id;
   tr.querySelector('.row-num').textContent = index + 1;
   applyRowStatusClass(tr, row.status || 'new');
+
+  if (isAdminTaskRow(row)) {
+    tr.classList.add('task-row--admin');
+  }
 
   const categorySelect = tr.querySelector('[data-field="category"]');
   populateCategorySelect(categorySelect, categories, row.category || '');
@@ -117,17 +156,19 @@ function renderRow(row, index, tbodyEl) {
     }
   });
 
-  bindRowInputs(row, tr);
+  bindRowInputs(row, tr, true);
   tbodyEl.appendChild(tr);
 }
 
 function render() {
+  projectBody.replaceChildren();
   tbody.replaceChildren();
   updatePersonUi();
 
   if (!getSelectedPerson()) return;
 
-  rows.forEach((row, index) => renderRow(row, index, tbody));
+  projectRows().forEach((row, index) => renderProjectRow(row, index, projectBody));
+  customRows().forEach((row, index) => renderCustomRow(row, index, tbody));
 
   updateTotals();
   updateFillIndicator(progress, fillElements);
@@ -150,7 +191,7 @@ function onCellChange(taskId, input, tr) {
 
   tr.querySelector('.row-total').textContent = formatHours(rowTotal(row));
 
-  if (field === 'task' || field === 'category') {
+  if (!isProjectRow(row) && (field === 'task' || field === 'category')) {
     if (row.status !== 'transferred') {
       row.status = 'editing';
       const badge = tr.querySelector('.status-badge');
@@ -164,7 +205,7 @@ function onCellChange(taskId, input, tr) {
 
   saveTaskDebounced(taskId, taskPayload(row));
 
-  progress = buildProgress(rows.reduce((sum, item) => sum + rowTotal(item), 0));
+  progress = buildProgressFromRows(rows);
   updateTotals();
   updateFillIndicator(progress, fillElements);
   if (fillPercent) {
@@ -176,6 +217,7 @@ function updateTotals() {
   const dayTotals = Object.fromEntries(DAYS.map((d) => [d, 0]));
 
   rows.forEach((row) => {
+    if (isProjectRow(row)) return;
     DAYS.forEach((day) => {
       dayTotals[day] += parseHours(row[day]);
     });
@@ -189,7 +231,7 @@ function updateTotals() {
   grandTotalEl.textContent = formatHours(DAYS.reduce((s, d) => s + dayTotals[d], 0));
 }
 
-async function addRow() {
+async function addRow(category = '') {
   const week = weekPicker.getWeek();
   const fio = getSelectedPerson();
   if (!fio) return;
@@ -197,10 +239,10 @@ async function addRow() {
   try {
     const created = await api(`/api/tasks?week=${week}`, {
       method: 'POST',
-      body: JSON.stringify(emptyTask(fio, week)),
+      body: JSON.stringify({ ...emptyTask(fio, week), category }),
     });
     rows.push(created);
-    progress = buildProgress(rows.reduce((sum, item) => sum + rowTotal(item), 0));
+    progress = buildProgressFromRows(rows);
     render();
     weekPicker.refreshWeeksList();
     const lastTaskInput = tbody.querySelector('tr:last-child .cell-input[data-field="task"]');
@@ -255,9 +297,10 @@ personSelect.addEventListener('change', async () => {
   await loadTasks();
 });
 
-document.getElementById('btn-add').addEventListener('click', addRow);
+document.getElementById('btn-add').addEventListener('click', () => addRow());
+document.getElementById('btn-add-admin').addEventListener('click', () => addRow(ADMIN_TASK_CATEGORY));
 document.getElementById('btn-export').addEventListener('click', () => {
-  exportCsv(rows, 'tasks', weekPicker.getWeek());
+  exportCsv(rows.filter((row) => !isProjectRow(row)), 'tasks', weekPicker.getWeek());
 });
 document.getElementById('btn-logout').addEventListener('click', logout);
 

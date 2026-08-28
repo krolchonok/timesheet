@@ -22,7 +22,7 @@
     <header class="header">
       <div class="header__text">
         <h1 id="admin-title">Просмотр</h1>
-        <p class="subtitle" id="admin-subtitle">Статус заполнения, перенос названий и статусы задач</p>
+        <p class="subtitle" id="admin-subtitle">40 ч = проектная строка + административные задачи сотрудника. Вы задаёте итоговое наименование (→)</p>
       </div>
       <div class="header__actions">
         <button type="button" class="btn btn--secondary" id="btn-export">Экспорт CSV</button>
@@ -62,7 +62,7 @@
           <button type="button" class="btn btn--small btn--ghost" id="btn-hide-all">Скрыть все</button>
         </div>
       </div>
-      <p class="completion-panel__hint">Нажмите на имя, чтобы скрыть или показать сотрудника в списке задач</p>
+      <p class="completion-panel__hint">40 ч = проектные часы (строка) + задачи категории «Административные» (создаёт сотрудник). Вы — итоговое название и статус.</p>
       <div id="completion-list" class="completion-list"></div>
     </section>
 
@@ -145,6 +145,33 @@
         <p class="user-section__empty hidden">Нет задач у этого сотрудника</p>
       </div>
     </section>
+  </template>
+
+  <template id="row-project-view-template">
+    <tr class="task-row task-row--project">
+      <td class="col-num row-num"></td>
+      <td class="col-category cell-text">Проектные</td>
+      <td class="col-task cell-text project-task-name"></td>
+      <td class="col-final-task cell-text">—</td>
+      <td class="col-status cell-text">—</td>
+      <td class="col-day" data-day="mon">
+        <input type="number" class="cell-input cell-input--hours" data-field="mon" min="0" max="24" step="0.5" value="0">
+      </td>
+      <td class="col-day" data-day="tue">
+        <input type="number" class="cell-input cell-input--hours" data-field="tue" min="0" max="24" step="0.5" value="0">
+      </td>
+      <td class="col-day" data-day="wed">
+        <input type="number" class="cell-input cell-input--hours" data-field="wed" min="0" max="24" step="0.5" value="0">
+      </td>
+      <td class="col-day" data-day="thu">
+        <input type="number" class="cell-input cell-input--hours" data-field="thu" min="0" max="24" step="0.5" value="0">
+      </td>
+      <td class="col-day" data-day="fri">
+        <input type="number" class="cell-input cell-input--hours" data-field="fri" min="0" max="24" step="0.5" value="0">
+      </td>
+      <td class="col-total row-total"></td>
+      <td class="col-comment cell-text">—</td>
+    </tr>
   </template>
 
   <template id="row-view-template">

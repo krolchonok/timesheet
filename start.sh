@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
+set -euo pipefail
 cd "$(dirname "$0")"
+
 PORT="${1:-8888}"
+export TIMESHEET_ENV="${TIMESHEET_ENV:-development}"
 export HOST="${HOST:-0.0.0.0}"
 export PORT="$PORT"
-echo "Starting timesheet server on http://${HOST}:${PORT}"
-echo "  Local:   http://127.0.0.1:${PORT}"
-echo "  Network: http://10.0.0.16:${PORT}"
-echo "  Login:   admin/admin or user/user"
+export TIMESHEET_SEED_DEMO="${TIMESHEET_SEED_DEMO:-1}"
+
+mkdir -p data
+
+echo "Starting Timesheet (development) on http://${HOST}:${PORT}"
+echo "  Login: admin/admin or user/user (demo)"
 echo ""
-echo "Note: port 8080 on 10.0.0.16 is redirected elsewhere (iptables -> 192.168.100.1)"
 exec python3 server.py

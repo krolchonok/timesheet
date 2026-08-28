@@ -3,6 +3,7 @@ const userSectionTemplate = document.getElementById('user-section-template');
 const completionItemTemplate = document.getElementById('completion-item-template');
 const managePersonTemplate = document.getElementById('manage-person-template');
 const rowViewTemplate = document.getElementById('row-view-template');
+const rowProjectViewTemplate = document.getElementById('row-project-view-template');
 const adminTitle = document.getElementById('admin-title');
 const adminSubtitle = document.getElementById('admin-subtitle');
 const panelView = document.getElementById('panel-view');
@@ -35,11 +36,11 @@ let hiddenPeople = new Set();
 const ADMIN_MODE_COPY = {
   view: {
     title: 'Просмотр',
-    subtitle: 'Статус заполнения, перенос названий и статусы задач',
+    subtitle: '40 ч = проект + админ. задачи сотрудника. Вы — итоговое наименование и статус',
   },
   manage: {
     title: 'Управление',
-    subtitle: 'Сотрудники и категории задач',
+    subtitle: 'Сотрудники и категории отчётных задач',
   },
 };
 
@@ -58,8 +59,8 @@ function setAdminMode(mode) {
   adminSubtitle.textContent = ADMIN_MODE_COPY[mode].subtitle;
   if (mode === 'manage') {
     renderManagePeople();
-    api('/api/categories').then((items) => {
-      categories = items;
+    api('/api/categories').then((cats) => {
+      categories = cats;
       renderCategoryList(categories);
     });
   } else {
@@ -75,6 +76,11 @@ const saveTaskDebounced = debounce(async (taskId, payload) => {
       body: JSON.stringify(payload),
     });
     weekPicker?.refreshWeeksList();
+    if (weekPicker && adminMode === 'view') {
+      completion = await api(`/api/completion?week=${encodeURIComponent(weekPicker.getWeek())}`);
+      renderCompletion();
+      render();
+    }
   } catch (error) {
     alert(`Ошибка сохранения: ${error.message}`);
   }
@@ -175,8 +181,10 @@ function renderCompletion() {
     nameEl.textContent = person.name;
 
     const meta = person.filled
-      ? `${formatHours(person.total_hours)} / ${person.hours_norm} ч · ${person.hours_percent}%`
-      : `0 / ${person.hours_norm} ч`;
+      ? `Проект ${formatHours(person.project_hours)} + админ ${formatHours(person.admin_hours)} = ${formatHours(person.total_hours)} / ${person.hours_norm} ч`
+      : (person.project_hours > 0 || person.admin_hours > 0)
+        ? `Проект ${formatHours(person.project_hours)} + админ ${formatHours(person.admin_hours)} = ${formatHours(person.total_hours)} / ${person.hours_norm} ч`
+        : `0 / ${person.hours_norm} ч`;
     metaEl.textContent = visible ? meta : 'Скрыт';
 
     item.addEventListener('click', () => {
@@ -219,13 +227,38 @@ function bindTaskRowInputs(row, tr) {
   });
 }
 
+function renderProjectRowView(row, index, tbody) {
+  const tr = rowProjectViewTemplate.content.cloneNode(true).querySelector('tr');
+  tr.dataset.id = row.id;
+  tr.querySelector('.row-num').textContent = index + 1;
+  tr.querySelector('.project-task-name').textContent = row.task || 'Проектные задачи';
+
+  tr.querySelectorAll('.cell-input[data-field]').forEach((input) => {
+    const field = input.dataset.field;
+    if (DAYS.includes(field)) {
+      input.value = formatHours(parseHours(row[field]));
+    }
+  });
+
+  tr.querySelector('.row-total').textContent = formatHours(rowTotal(row));
+  bindTaskRowInputs(row, tr);
+  tbody.appendChild(tr);
+}
+
 function renderTaskRowView(row, index, tbody) {
   const tr = rowViewTemplate.content.cloneNode(true).querySelector('tr');
   tr.dataset.id = row.id;
   tr.querySelector('.row-num').textContent = index + 1;
   applyRowStatusClass(tr, row.status || 'new');
 
-  tr.querySelector('.col-category.cell-text').textContent = row.category || '—';
+  const categoryTd = tr.querySelector('.col-category');
+  categoryTd.classList.remove('cell-text');
+  const categorySelect = document.createElement('select');
+  categorySelect.className = 'cell-select';
+  categorySelect.dataset.field = 'category';
+  populateCategorySelect(categorySelect, categories, row.category || '');
+  categoryTd.replaceChildren(categorySelect);
+
   tr.querySelector('.col-task.cell-text').textContent = row.task || '—';
 
   const finalInput = tr.querySelector('[data-field="final_task"]');
@@ -265,25 +298,42 @@ function renderTaskRowView(row, index, tbody) {
 function renderUserSection(group, query) {
   const section = userSectionTemplate.content.cloneNode(true).querySelector('.user-section');
   const visibleTasks = group.tasks.filter((row) => matchesSearch(row, group.person.name, query));
+  const projectTasks = visibleTasks.filter(isProjectRow);
   const customTasks = visibleTasks.filter((row) => !isProjectRow(row));
-  const totalHours = customTasks.reduce((sum, row) => sum + rowTotal(row), 0);
+  const reportTasks = customTasks.filter((row) => !isAdminTaskRow(row));
+  const reportHours = reportTasks.reduce((sum, row) => sum + rowTotal(row), 0);
+  const person = group.person;
+  const tableTasks = [...projectTasks, ...customTasks];
 
-  section.dataset.personId = group.person.id || group.person.name;
-  section.querySelector('.user-section__name').textContent = group.person.name;
+  section.dataset.personId = person.id || person.name;
+  section.querySelector('.user-section__name').textContent = person.name;
 
-  const metaParts = [`${customTasks.length} задач`, `${formatHours(totalHours)} ч`];
-  if (group.person.filled === false) metaParts.push('не заполнено');
+  const normParts = [
+    `Проект ${formatHours(person.project_hours || 0)} ч`,
+    `админ ${formatHours(person.admin_hours || 0)} ч`,
+    `${formatHours(person.total_hours || 0)} / ${person.hours_norm || 40} ч`,
+  ];
+  const metaParts = [normParts.join(' · '), `${customTasks.length} задач в отчёте`, `${formatHours(reportHours)} ч отчёт`];
+  if (person.filled === false) metaParts.push('не заполнено');
   section.querySelector('.user-section__meta').textContent = metaParts.join(' · ');
 
   const tbody = section.querySelector('.user-task-body');
   const emptyEl = section.querySelector('.user-section__empty');
   const tableWrap = section.querySelector('.table-wrap');
 
-  if (customTasks.length === 0) {
+  if (tableTasks.length === 0) {
     tableWrap.classList.add('hidden');
     emptyEl.classList.remove('hidden');
   } else {
-    customTasks.forEach((row, index) => renderTaskRowView(row, index, tbody));
+    let index = 0;
+    projectTasks.forEach((row) => {
+      renderProjectRowView(row, index, tbody);
+      index += 1;
+    });
+    customTasks.forEach((row) => {
+      renderTaskRowView(row, index, tbody);
+      index += 1;
+    });
   }
 
   section.querySelector('.user-section__header').addEventListener('click', () => {
@@ -358,11 +408,13 @@ async function loadData(refreshCompletion = true) {
   const requests = [
     api(`/api/tasks?week=${encodeURIComponent(week)}`).then(unwrapTasksResponse),
     api(`/api/completion?week=${encodeURIComponent(week)}`),
+    api('/api/categories'),
   ];
 
   const results = await Promise.all(requests);
   rows = results[0].tasks;
   completion = results[1];
+  categories = results[2];
   hiddenPeople = new Set(
     [...hiddenPeople].filter((name) => completion.people.some((p) => p.name === name))
   );
@@ -450,7 +502,7 @@ btnCollapseAll.addEventListener('click', () => {
 });
 
 document.getElementById('btn-export').addEventListener('click', () => {
-  exportCsv(rows, 'all-tasks', weekPicker.getWeek());
+  exportCsv(rows.filter((row) => !isProjectRow(row)), 'all-tasks', weekPicker.getWeek());
 });
 document.getElementById('btn-logout').addEventListener('click', logout);
 searchInput.addEventListener('input', render);

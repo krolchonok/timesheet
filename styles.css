@@ -584,6 +584,12 @@ body {
   margin-bottom: 0;
 }
 
+.manage-block__hint {
+  margin: 0 0 10px;
+  color: var(--text-faint);
+  font-size: 0.82rem;
+}
+
 .manage-block__title {
   margin: 0 0 10px;
   font-size: 0.88rem;
@@ -675,7 +681,9 @@ body {
   font-size: 0.85rem;
 }
 
-.people-form {
+.admin-add-task-form {
+  margin-bottom: 0.75rem;
+}
   display: flex;
   gap: 8px;
   margin-bottom: 14px;
@@ -1308,6 +1316,14 @@ body {
   letter-spacing: 0.04em;
   color: var(--text-muted);
   background: var(--surface-muted);
+}
+
+.task-row--admin {
+  background: rgba(59, 130, 246, 0.06);
+}
+
+.task-row--admin .col-category .cell-select {
+  font-weight: 600;
 }
 
 .task-row--project .project-task-name {

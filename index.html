@@ -22,11 +22,12 @@
     <header class="header">
       <div class="header__text">
         <h1>Мои задачи</h1>
-        <p class="subtitle">Заполните задачи и часы за неделю. Индикатор сверху показывает прогресс до 40 ч.</p>
+        <p class="subtitle">Проектная строка — системная. Задачи добавляете вы; руководитель задаёт итоговое название.</p>
       </div>
       <div class="header__actions">
         <button type="button" class="btn btn--secondary" id="btn-export" disabled>Экспорт CSV</button>
-        <button type="button" class="btn btn--primary" id="btn-add" disabled>+ Добавить задачу</button>
+        <button type="button" class="btn btn--secondary" id="btn-add-admin" disabled>+ Админ. задача</button>
+        <button type="button" class="btn btn--primary" id="btn-add" disabled>+ Задача для отчёта</button>
         <button type="button" class="btn btn--ghost" id="btn-logout">Выйти</button>
       </div>
     </header>
@@ -59,8 +60,32 @@
     <div class="tasks-layout hidden" id="tasks-layout">
       <section class="task-section">
         <div class="task-section__head">
-          <h2>Задачи</h2>
-          <p>Добавляйте строки и указывайте часы по дням</p>
+          <h2>Проектные задачи</h2>
+          <p>Системная строка — только часы (не ваши задачи, для учёта проектного времени)</p>
+        </div>
+        <div class="table-wrap">
+          <table class="task-table">
+            <thead>
+              <tr>
+                <th class="col-num">#</th>
+                <th class="col-task">Задача</th>
+                <th class="col-day" data-day="mon">Пн</th>
+                <th class="col-day" data-day="tue">Вт</th>
+                <th class="col-day" data-day="wed">Ср</th>
+                <th class="col-day" data-day="thu">Чт</th>
+                <th class="col-day" data-day="fri">Пт</th>
+                <th class="col-total">Σ</th>
+              </tr>
+            </thead>
+            <tbody id="project-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="task-section">
+        <div class="task-section__head">
+          <h2>Остальные задачи</h2>
+          <p>Админ. задачи — в норму 40 ч. Прочие — только для отчёта руководителю</p>
         </div>
         <div class="table-wrap">
           <table class="task-table" id="task-table">
@@ -100,6 +125,31 @@
 
     <p class="empty-hint" id="empty-hint">Выберите ФИО, чтобы открыть таблицу задач</p>
   </div>
+
+  <template id="project-row-template">
+    <tr class="task-row task-row--project">
+      <td class="col-num row-num"></td>
+      <td class="col-task">
+        <span class="project-task-name"></span>
+      </td>
+      <td class="col-day" data-day="mon">
+        <input type="number" class="cell-input cell-input--hours" data-field="mon" min="0" max="24" step="0.5" value="0">
+      </td>
+      <td class="col-day" data-day="tue">
+        <input type="number" class="cell-input cell-input--hours" data-field="tue" min="0" max="24" step="0.5" value="0">
+      </td>
+      <td class="col-day" data-day="wed">
+        <input type="number" class="cell-input cell-input--hours" data-field="wed" min="0" max="24" step="0.5" value="0">
+      </td>
+      <td class="col-day" data-day="thu">
+        <input type="number" class="cell-input cell-input--hours" data-field="thu" min="0" max="24" step="0.5" value="0">
+      </td>
+      <td class="col-day" data-day="fri">
+        <input type="number" class="cell-input cell-input--hours" data-field="fri" min="0" max="24" step="0.5" value="0">
+      </td>
+      <td class="col-total row-total">0</td>
+    </tr>
+  </template>
 
   <template id="row-template">
     <tr class="task-row">

@@ -6,6 +6,7 @@ const TASK_STATUSES = [
   { value: 'editing', label: 'Редактируется' },
   { value: 'transferred', label: 'Перенесено' },
 ];
+const ADMIN_TASK_CATEGORY = 'Административные задачи';
 
 function unwrapTasksResponse(data) {
   if (Array.isArray(data)) {
@@ -32,9 +33,13 @@ function updateFillIndicator(progress, elements) {
   const filled = formatHours(progress.total_hours);
   const norm = progress.hours_norm;
   const percent = progress.hours_percent;
+  const project = formatHours(progress.project_hours ?? 0);
+  const admin = formatHours(progress.admin_hours ?? 0);
 
   if (label) {
-    label.textContent = `${filled} / ${norm} ч`;
+    label.textContent = progress.project_hours != null
+      ? `Проект ${project} · админ ${admin} · ${filled} / ${norm} ч`
+      : `${filled} / ${norm} ч`;
   }
   if (bar) {
     bar.style.width = `${percent}%`;
@@ -42,7 +47,9 @@ function updateFillIndicator(progress, elements) {
   }
   if (wrap) {
     wrap.setAttribute('aria-valuenow', String(percent));
-    wrap.title = `Заполнено ${filled} из ${norm} часов (${percent}%)`;
+    wrap.title = progress.project_hours != null
+      ? `Проект ${project} ч + админ ${admin} ч = ${filled} из ${norm} (${percent}%)`
+      : `Заполнено ${filled} из ${norm} часов (${percent}%)`;
   }
 }
 
@@ -162,6 +169,33 @@ function taskPayload(row) {
 
 function isProjectRow(row) {
   return Boolean(row.is_project);
+}
+
+function isAdminTaskRow(row) {
+  return !isProjectRow(row) && row.category === ADMIN_TASK_CATEGORY;
+}
+
+function normHoursBreakdown(rows) {
+  let project = 0;
+  let admin = 0;
+  rows.forEach((row) => {
+    const hours = rowTotal(row);
+    if (isProjectRow(row)) project += hours;
+    else if (isAdminTaskRow(row)) admin += hours;
+  });
+  return { project_hours: project, admin_hours: admin, total_hours: project + admin };
+}
+
+function buildProgressFromRows(rows) {
+  const breakdown = normHoursBreakdown(rows);
+  return {
+    ...buildProgress(breakdown.total_hours),
+    project_hours: breakdown.project_hours,
+    admin_hours: breakdown.admin_hours,
+  };
+}
+function normHoursFromRows(rows) {
+  return normHoursBreakdown(rows).total_hours;
 }
 
 async function requireAuth() {

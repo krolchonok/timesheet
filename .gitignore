@@ -2,7 +2,11 @@ __pycache__/
 *.py[cod]
 *.db
 data/*.db
+!data/.gitkeep
 .env
 .env.*
+!.env.example
 *.log
+.venv/
+venv/
 .DS_Store
