@@ -22,10 +22,4 @@ if [[ "${SECRET_KEY:-}" == "" || "${SECRET_KEY}" == "change-me-to-a-long-random-
 fi
 
 echo "Starting Timesheet (production) on http://${HOST}:${PORT}"
-exec gunicorn \
-  --bind "${HOST}:${PORT}" \
-  --workers "${GUNICORN_WORKERS:-2}" \
-  --timeout "${GUNICORN_TIMEOUT:-120}" \
-  --access-logfile - \
-  --error-logfile - \
-  server:app
+exec node server.js

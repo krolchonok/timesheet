@@ -13,4 +13,4 @@ mkdir -p data
 echo "Starting Timesheet (development) on http://${HOST}:${PORT}"
 echo "  Login: admin/admin or user/user (demo)"
 echo ""
-exec python3 server.py
+exec node server.js

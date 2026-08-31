@@ -1,5 +1,4 @@
-__pycache__/
-*.py[cod]
+node_modules/
 *.db
 data/*.db
 !data/.gitkeep
@@ -7,6 +6,4 @@ data/*.db
 .env.*
 !.env.example
 *.log
-.venv/
-venv/
 .DS_Store
