@@ -681,9 +681,7 @@ body {
   font-size: 0.85rem;
 }
 
-.admin-add-task-form {
-  margin-bottom: 0.75rem;
-}
+.people-form {
   display: flex;
   gap: 8px;
   margin-bottom: 14px;
@@ -1510,8 +1508,7 @@ body {
   }
 
   .header__actions .btn {
-    flex: 1;
-    min-width: 0;
+    flex: 1 1 calc(50% - 4px);
   }
 
   .toolbar__hint {
