@@ -9,4 +9,5 @@ data/*.db
 *.log
 .venv/
 venv/
+node_modules/
 .DS_Store

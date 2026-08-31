@@ -7,7 +7,7 @@ Type=simple
 User=www-data
 WorkingDirectory=/opt/timesheet
 EnvironmentFile=/opt/timesheet/.env
-ExecStart=/opt/timesheet/start-prod.sh
+ExecStart=/opt/timesheet/start
 Restart=on-failure
 RestartSec=5
 

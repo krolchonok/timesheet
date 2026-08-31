@@ -40,20 +40,22 @@ rsync -a --delete \
   --exclude '.env' \
   "${SOURCE_DIR}/" "${INSTALL_DIR}/"
 mkdir -p "${INSTALL_DIR}/data"
+chmod +x "${INSTALL_DIR}/start"
 
 cd "${INSTALL_DIR}"
 
-echo "==> Создаю venv и ставлю Python-зависимости"
+echo "==> Создаю venv и ставлю зависимости"
 python3 -m venv .venv
-.venv/bin/pip install --upgrade pip
-.venv/bin/pip install -r requirements.txt
+.venv/bin/pip install -q --upgrade pip
+.venv/bin/pip install -q -r requirements.txt
+touch .venv/.deps_ok
 
 if [[ ! -f "${INSTALL_DIR}/.env" ]]; then
   echo "==> Создаю .env"
-  cp .env.example .env
+  cp "${INSTALL_DIR}/.env.example" "${INSTALL_DIR}/.env"
 
   SECRET_KEY="$(openssl rand -hex 32 2>/dev/null || head -c48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c64)"
-  sed -i "s#^SECRET_KEY=.*#SECRET_KEY=${SECRET_KEY}#" .env
+  sed -i "s#^SECRET_KEY=.*#SECRET_KEY=${SECRET_KEY}#" "${INSTALL_DIR}/.env"
 
   read -rp "Логин администратора [admin]: " ADMIN_USERNAME
   ADMIN_USERNAME="${ADMIN_USERNAME:-admin}"
@@ -64,15 +66,15 @@ if [[ ! -f "${INSTALL_DIR}/.env" ]]; then
     echo "Пароль не может быть пустым."
   done
 
-  if grep -q '^#\?ADMIN_USERNAME=' .env; then
-    sed -i "s|^#\?ADMIN_USERNAME=.*|ADMIN_USERNAME=${ADMIN_USERNAME}|" .env
+  if grep -q '^#\?ADMIN_USERNAME=' "${INSTALL_DIR}/.env"; then
+    sed -i "s|^#\?ADMIN_USERNAME=.*|ADMIN_USERNAME=${ADMIN_USERNAME}|" "${INSTALL_DIR}/.env"
   else
-    echo "ADMIN_USERNAME=${ADMIN_USERNAME}" >> .env
+    echo "ADMIN_USERNAME=${ADMIN_USERNAME}" >> "${INSTALL_DIR}/.env"
   fi
-  if grep -q '^#\?ADMIN_PASSWORD=' .env; then
-    sed -i "s|^#\?ADMIN_PASSWORD=.*|ADMIN_PASSWORD=${ADMIN_PASSWORD}|" .env
+  if grep -q '^#\?ADMIN_PASSWORD=' "${INSTALL_DIR}/.env"; then
+    sed -i "s|^#\?ADMIN_PASSWORD=.*|ADMIN_PASSWORD=${ADMIN_PASSWORD}|" "${INSTALL_DIR}/.env"
   else
-    echo "ADMIN_PASSWORD=${ADMIN_PASSWORD}" >> .env
+    echo "ADMIN_PASSWORD=${ADMIN_PASSWORD}" >> "${INSTALL_DIR}/.env"
   fi
   unset ADMIN_PASSWORD
 else
