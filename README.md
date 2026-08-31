@@ -20,7 +20,9 @@
 ## Быстрый старт (разработка)
 
 ```bash
-npm install
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 ./start.sh 8888
 ```
 
@@ -30,14 +32,14 @@ npm install
 
 ## Production
 
-Расписание доступно **без входа**. Админ-панель — только после логина (`/login` → `/admin`).
-
 ### 1. Подготовка
 
 ```bash
 git clone https://github.com/krolchonok/timesheet.git
 cd timesheet
-npm install
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 cp .env.example .env
 ```
 
@@ -50,8 +52,8 @@ cp .env.example .env
 ### 2. Пользователи
 
 ```bash
-node scripts/create-user.js admin 'your-secure-password' --role admin
-node scripts/create-user.js ivanov 'password' --role user
+python3 scripts/create_user.py admin 'your-secure-password' --role admin
+python3 scripts/create_user.py ivanov 'password' --role user
 ```
 
 Либо задайте `ADMIN_USERNAME` и `ADMIN_PASSWORD` в `.env` перед первым запуском.
@@ -63,24 +65,13 @@ chmod +x start-prod.sh start.sh
 ./start-prod.sh
 ```
 
-Node слушает `HOST:PORT` из `.env` (по умолчанию `0.0.0.0:8888`).
+Gunicorn слушает `HOST:PORT` из `.env` (по умолчанию `0.0.0.0:8888`).
 
 ### 4. systemd (опционально)
 
-Автоматически (клонируйте репозиторий и запустите установщик — он сам поставит зависимости, сгенерирует `.env` с `SECRET_KEY`, спросит логин/пароль администратора и включит systemd-сервис):
-
 ```bash
 sudo ./install.sh            # ставит в /opt/timesheet
-sudo ./install.sh /srv/timesheet   # или в другую директорию
-```
-
-Вручную:
-
-```bash
-sudo cp -r . /opt/timesheet
-sudo cp deploy/timesheet.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now timesheet
+sudo ./install.sh /srv/timesheet
 ```
 
 За nginx/caddy — проксируйте на `127.0.0.1:8888`, включите HTTPS и `SESSION_COOKIE_SECURE=1`.
@@ -94,11 +85,11 @@ sudo systemctl enable --now timesheet
 | `TIMESHEET_SEED_DEMO` | `1` — demo user/admin при первом старте |
 | `HOST`, `PORT` | Адрес и порт |
 | `SESSION_COOKIE_SECURE` | `1` за HTTPS |
-| `TRUST_PROXY` | `1` (по умолчанию) за nginx; `0` без прокси |
+| `GUNICORN_WORKERS` | Число воркеров (по умолчанию 2) |
 
 ## Стек
 
-Express + better-sqlite3 (Node.js), статический фронтенд (HTML/JS/CSS).
+Flask + SQLite (Python 3), статический фронтенд (HTML/JS/CSS).
 
 База данных: `data/timesheet.db` (не в git).
 
@@ -106,13 +97,13 @@ Express + better-sqlite3 (Node.js), статический фронтенд (HTM
 
 ```
 timesheet/
-├── server.js          # точка входа (Express)
-├── src/               # маршруты API, работа с БД, аутентификация
-├── start.sh           # dev-сервер
-├── start-prod.sh      # production-сервер
-├── scripts/create-user.js
-├── INSTRUCTION.md     # инструкция для пользователей
+├── server.py              # Flask app
+├── requirements.txt
+├── start.sh               # dev-сервер
+├── start-prod.sh          # gunicorn
+├── scripts/create_user.py
+├── INSTRUCTION.md
 └── deploy/
     ├── timesheet.service
-    └── nginx-timesheet.conf   # пример для nginx на другом ПК
+    └── nginx-timesheet.conf
 ```

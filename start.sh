@@ -10,7 +10,12 @@ export TIMESHEET_SEED_DEMO="${TIMESHEET_SEED_DEMO:-1}"
 
 mkdir -p data
 
+if [[ -f .venv/bin/activate ]]; then
+  # shellcheck disable=SC1091
+  source .venv/bin/activate
+fi
+
 echo "Starting Timesheet (development) on http://${HOST}:${PORT}"
 echo "  Login: admin/admin or user/user (demo)"
 echo ""
-exec node server.js
+exec python3 server.py

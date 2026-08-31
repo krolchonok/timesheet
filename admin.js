@@ -516,8 +516,13 @@ document.querySelectorAll('.admin-tabs__btn').forEach((btn) => {
 });
 
 (async () => {
-  const user = await requireAdminAuth();
+  const user = await requireAuth();
   if (!user) return;
+
+  if (user.role !== 'admin') {
+    window.location.href = '/';
+    return;
+  }
 
   userBadge.textContent = `${user.username} (админ)`;
 

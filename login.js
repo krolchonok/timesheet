@@ -14,14 +14,7 @@ document.getElementById('login-form').addEventListener('submit', async (event) =
       body: JSON.stringify({ username, password }),
     });
 
-    if (user.role !== 'admin') {
-      await api('/api/logout', { method: 'POST' });
-      errorEl.textContent = 'Доступ только для администратора';
-      errorEl.classList.remove('hidden');
-      return;
-    }
-
-    window.location.href = '/admin';
+    window.location.href = user.role === 'admin' ? '/admin' : '/';
   } catch (error) {
     errorEl.textContent = error.message;
     errorEl.classList.remove('hidden');
@@ -31,8 +24,6 @@ document.getElementById('login-form').addEventListener('submit', async (event) =
 (async () => {
   try {
     const user = await api('/api/me');
-    if (user.role === 'admin') {
-      window.location.href = '/admin';
-    }
+    window.location.href = user.role === 'admin' ? '/admin' : '/';
   } catch (_) {}
 })();

@@ -21,5 +21,16 @@ if [[ "${SECRET_KEY:-}" == "" || "${SECRET_KEY}" == "change-me-to-a-long-random-
   exit 1
 fi
 
+if [[ -f .venv/bin/activate ]]; then
+  # shellcheck disable=SC1091
+  source .venv/bin/activate
+fi
+
 echo "Starting Timesheet (production) on http://${HOST}:${PORT}"
-exec node server.js
+exec gunicorn \
+  --bind "${HOST}:${PORT}" \
+  --workers "${GUNICORN_WORKERS:-2}" \
+  --timeout "${GUNICORN_TIMEOUT:-120}" \
+  --access-logfile - \
+  --error-logfile - \
+  server:app
