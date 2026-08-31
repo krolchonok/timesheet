@@ -10,6 +10,11 @@ const BASE_DIR = __dirname;
 const FRONTEND_FILES = ['app.js', 'admin.js', 'login.js', 'week.js', 'api.js', 'styles.css'];
 
 const app = express();
+
+if (String(process.env.TRUST_PROXY || '1') !== '0') {
+  app.set('trust proxy', 1);
+}
+
 app.use(express.json());
 app.use(sessionMiddleware());
 

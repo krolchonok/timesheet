@@ -2,7 +2,10 @@
 
 Веб-таблица учёта задач и часов с экспортом в MS Project.
 
-**Репозиторий:** https://github.com/krolchonok/timesheet
+**Репозиторий:** https://github.com/krolchonok/timesheet  
+**Релизы:** https://github.com/krolchonok/timesheet/releases
+
+Установка на другой сервер: [INSTALL.md](INSTALL.md)
 
 ## Возможности
 
@@ -89,6 +92,7 @@ sudo systemctl enable --now timesheet
 | `TIMESHEET_SEED_DEMO` | `1` — demo user/admin при первом старте |
 | `HOST`, `PORT` | Адрес и порт |
 | `SESSION_COOKIE_SECURE` | `1` за HTTPS |
+| `TRUST_PROXY` | `1` (по умолчанию) за nginx; `0` без прокси |
 
 ## Стек
 
@@ -106,5 +110,7 @@ timesheet/
 ├── start-prod.sh      # production-сервер
 ├── scripts/create-user.js
 ├── INSTRUCTION.md     # инструкция для пользователей
-└── deploy/timesheet.service
+└── deploy/
+    ├── timesheet.service
+    └── nginx-timesheet.conf   # пример для nginx на другом ПК
 ```
