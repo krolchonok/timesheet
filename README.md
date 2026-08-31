@@ -62,6 +62,15 @@ Node слушает `HOST:PORT` из `.env` (по умолчанию `0.0.0.0:88
 
 ### 4. systemd (опционально)
 
+Автоматически (клонируйте репозиторий и запустите установщик — он сам поставит зависимости, сгенерирует `.env` с `SECRET_KEY`, спросит логин/пароль администратора и включит systemd-сервис):
+
+```bash
+sudo ./install.sh            # ставит в /opt/timesheet
+sudo ./install.sh /srv/timesheet   # или в другую директорию
+```
+
+Вручную:
+
 ```bash
 sudo cp -r . /opt/timesheet
 sudo cp deploy/timesheet.service /etc/systemd/system/
