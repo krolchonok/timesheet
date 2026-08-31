@@ -1,10 +1,10 @@
 const express = require('express');
 const { db } = require('../db');
-const { loginRequired, adminRequired } = require('../auth');
+const { adminRequired } = require('../auth');
 
 const router = express.Router();
 
-router.get('/people', loginRequired, (req, res) => {
+router.get('/people', (req, res) => {
   const rows = db
     .prepare('SELECT id, name FROM people WHERE active = 1 ORDER BY name COLLATE NOCASE')
     .all();

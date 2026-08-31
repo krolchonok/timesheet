@@ -1,10 +1,10 @@
 const express = require('express');
 const { db } = require('../db');
-const { loginRequired, adminRequired } = require('../auth');
+const { adminRequired } = require('../auth');
 
 const router = express.Router();
 
-router.get('/categories', loginRequired, (req, res) => {
+router.get('/categories', (req, res) => {
   const rows = db
     .prepare(
       `SELECT id, name, sort_order

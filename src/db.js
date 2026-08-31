@@ -1,5 +1,6 @@
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const Database = require('better-sqlite3');
 const bcrypt = require('bcryptjs');
 
@@ -299,7 +300,20 @@ function getTask(taskId) {
 }
 
 function canAccessTask(user, taskRow) {
-  return user.role === 'admin' || taskRow.user_id === user.id;
+  if (user && user.role === 'admin') return true;
+  if (user && user.role !== 'public' && taskRow.user_id === user.id) return true;
+  return getActivePerson(taskRow.fio) !== null;
+}
+
+function getPublicUserId() {
+  let row = db.prepare("SELECT id FROM users WHERE username = '_public'").get();
+  if (!row) {
+    db.prepare(
+      'INSERT INTO users (username, password_hash, role, default_fio) VALUES (?, ?, ?, ?)'
+    ).run('_public', bcrypt.hashSync(crypto.randomBytes(32).toString('hex'), 10), 'public', '');
+    row = db.prepare("SELECT id FROM users WHERE username = '_public'").get();
+  }
+  return row.id;
 }
 
 function initSchema() {
@@ -400,4 +414,5 @@ module.exports = {
   normalizeTaskStatus,
   getTask,
   canAccessTask,
+  getPublicUserId,
 };

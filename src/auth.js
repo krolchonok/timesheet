@@ -32,6 +32,11 @@ function currentUser(req) {
   return db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
 }
 
+function optionalAuth(req, res, next) {
+  req.user = currentUser(req);
+  next();
+}
+
 function loginRequired(req, res, next) {
   const user = currentUser(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
@@ -51,6 +56,7 @@ module.exports = {
   assertProductionSecretKey,
   sessionMiddleware,
   currentUser,
+  optionalAuth,
   loginRequired,
   adminRequired,
 };

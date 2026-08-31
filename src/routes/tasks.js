@@ -3,7 +3,6 @@ const {
   db,
   DEFAULT_TASK_STATUS,
   utcNow,
-  weekStartFor,
   parseWeekStart,
   getActivePerson,
   ensureProjectTasks,
@@ -14,21 +13,22 @@ const {
   normalizeTaskStatus,
   getTask,
   canAccessTask,
+  getPublicUserId,
 } = require('../db');
 const { parseTaskPayload } = require('../helpers');
-const { loginRequired } = require('../auth');
+const { optionalAuth, adminRequired } = require('../auth');
 
 const router = express.Router();
 
 const LIST_ORDER = 'ORDER BY tasks.is_project DESC, tasks.task COLLATE NOCASE, tasks.updated_at DESC, tasks.id DESC';
 
-router.get('/tasks', loginRequired, (req, res) => {
+router.get('/tasks', optionalAuth, (req, res) => {
   const user = req.user;
   const week = parseWeekStart(req.query.week);
   let fio = String(req.query.fio ?? '').trim();
 
   let rows;
-  if (user.role === 'admin') {
+  if (user && user.role === 'admin') {
     ensureProjectTasksForWeek(week, user.id, fio || null);
     let query = `
       SELECT tasks.*, users.username AS owner_username
@@ -52,7 +52,7 @@ router.get('/tasks', loginRequired, (req, res) => {
       return res.json({ tasks: [], progress: hoursProgress(0) });
     }
     fio = person.name;
-    ensureProjectTasks(fio, week, user.id);
+    ensureProjectTasks(fio, week, getPublicUserId());
     rows = db
       .prepare(
         `SELECT tasks.*, users.username AS owner_username
@@ -68,10 +68,10 @@ router.get('/tasks', loginRequired, (req, res) => {
   res.json({ tasks, progress: progressWithBreakdown(tasks) });
 });
 
-router.get('/weeks', loginRequired, (req, res) => {
+router.get('/weeks', optionalAuth, (req, res) => {
   const user = req.user;
   const rows =
-    user.role === 'admin'
+    user && user.role === 'admin'
       ? db
           .prepare(
             `SELECT week_start, COUNT(*) AS task_count
@@ -84,31 +84,30 @@ router.get('/weeks', loginRequired, (req, res) => {
           .prepare(
             `SELECT week_start, COUNT(*) AS task_count
              FROM tasks
-             WHERE user_id = ?
              GROUP BY week_start
              ORDER BY week_start DESC`
           )
-          .all(user.id);
+          .all();
   res.json(rows.map((row) => ({ week_start: row.week_start, task_count: row.task_count })));
 });
 
-router.post('/tasks', loginRequired, (req, res) => {
+router.post('/tasks', optionalAuth, (req, res) => {
   const user = req.user;
   const body = req.body || {};
   const payload = parseTaskPayload(body);
   payload.week_start = parseWeekStart(req.query.week || body.week_start);
   const now = utcNow();
 
-  let targetUserId = user.id;
-  if (user.role === 'admin' && req.query.user_id) {
+  let targetUserId = user && user.role !== 'public' ? user.id : getPublicUserId();
+  if (user && user.role === 'admin' && req.query.user_id) {
     targetUserId = parseInt(req.query.user_id, 10);
   }
 
-  if (payload.fio === '' && user.default_fio) {
+  if (payload.fio === '' && user && user.default_fio) {
     payload.fio = user.default_fio;
   }
 
-  if (user.role !== 'admin') {
+  if (!user || user.role !== 'admin') {
     const person = getActivePerson(payload.fio);
     if (!person) {
       return res.status(400).json({ error: 'Выберите ФИО из списка' });
@@ -144,7 +143,7 @@ router.post('/tasks', loginRequired, (req, res) => {
   res.status(201).json(taskRowToDict(row));
 });
 
-router.put('/tasks/:id', loginRequired, (req, res) => {
+router.put('/tasks/:id', optionalAuth, (req, res) => {
   const user = req.user;
   const taskId = parseInt(req.params.id, 10);
   const row = getTask(taskId);
@@ -152,7 +151,7 @@ router.put('/tasks/:id', loginRequired, (req, res) => {
   if (!canAccessTask(user, row)) return res.status(403).json({ error: 'Forbidden' });
 
   const body = req.body || {};
-  const isAdmin = user.role === 'admin';
+  const isAdmin = user && user.role === 'admin';
   const parsed = parseTaskPayload(body, { admin: isAdmin });
   const now = utcNow();
 
@@ -207,13 +206,13 @@ router.put('/tasks/:id', loginRequired, (req, res) => {
   res.json(taskRowToDict(getTask(taskId)));
 });
 
-router.delete('/tasks/:id', loginRequired, (req, res) => {
+router.delete('/tasks/:id', optionalAuth, (req, res) => {
   const user = req.user;
   const taskId = parseInt(req.params.id, 10);
   const row = getTask(taskId);
   if (!row) return res.status(404).json({ error: 'Not found' });
   if (!canAccessTask(user, row)) return res.status(403).json({ error: 'Forbidden' });
-  if (row.is_project && user.role !== 'admin') {
+  if (row.is_project && (!user || user.role !== 'admin')) {
     return res.status(403).json({ error: 'Проектные задачи нельзя удалять' });
   }
 
@@ -221,7 +220,7 @@ router.delete('/tasks/:id', loginRequired, (req, res) => {
   res.json({ ok: true });
 });
 
-router.post('/tasks/:id/copy', loginRequired, (req, res) => {
+router.post('/tasks/:id/copy', optionalAuth, (req, res) => {
   const user = req.user;
   const taskId = parseInt(req.params.id, 10);
   const row = getTask(taskId);
@@ -230,10 +229,10 @@ router.post('/tasks/:id/copy', loginRequired, (req, res) => {
 
   const payload = req.body || {};
   let targetUserId = row.user_id;
-  if (user.role === 'admin' && payload.user_id) {
+  if (user && user.role === 'admin' && payload.user_id) {
     targetUserId = parseInt(payload.user_id, 10);
-  } else if (user.role !== 'admin') {
-    targetUserId = user.id;
+  } else if (!user || user.role !== 'admin') {
+    targetUserId = getPublicUserId();
   }
 
   const weekStart = parseWeekStart(payload.week_start || row.week_start);
@@ -267,7 +266,7 @@ router.post('/tasks/:id/copy', loginRequired, (req, res) => {
   res.status(201).json(taskRowToDict(getTask(info.lastInsertRowid)));
 });
 
-router.post('/tasks/:id/transfer', require('../auth').adminRequired, (req, res) => {
+router.post('/tasks/:id/transfer', adminRequired, (req, res) => {
   const taskId = parseInt(req.params.id, 10);
   const row = getTask(taskId);
   if (!row) return res.status(404).json({ error: 'Not found' });
